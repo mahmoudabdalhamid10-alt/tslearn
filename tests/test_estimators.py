@@ -112,7 +112,7 @@ def get_estimators(type_filter='all'):
         if any([issubclass(_class, mixin) for mixin in filters]):
             filtered_estimators.append(_class())
             # Add variable length version of estimator
-            if _class.__name__ in ["TimeSeriesKMeans"]:
+            if _class.__name__ in ["TimeSeriesKMeans", "TimeSeriesBisectingKMeans"]:
                 filtered_estimators.append(_class(metric="dtw"))
     return sorted(filtered_estimators, key=lambda x: x.__class__.__name__)
 
