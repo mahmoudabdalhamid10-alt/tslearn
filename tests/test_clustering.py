@@ -13,6 +13,7 @@ from sklearn.utils.validation import check_is_fitted
 from tslearn.clustering import (
     EmptyClusterError,
     TimeSeriesKMeans,
+    TimeSeriesBisectingKMeans,
     KernelKMeans,
     KShape,
     TimeSeriesDBSCAN
@@ -669,3 +670,104 @@ def test_dbscan():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         TimeSeriesDBSCAN(metric="euclidean", metric_params={'whatever': "trimmed"}).fit(X)
+
+
+def test_bisecting_kmeans():
+    n, sz, d = 40, 16, 2
+    X = random_walks(n_ts=n, sz=sz, d=d, random_state=0)
+    for metric, params in [
+        ("euclidean", {}),
+        ("dtw", {"max_iter_barycenter": 3}),
+        ("softdtw", {"max_iter_barycenter": 3, "metric_params": {"gamma": 0.5}}),
+    ]:
+        for strategy in ["biggest_inertia", "largest_cluster"]:
+            model = TimeSeriesBisectingKMeans(
+                n_clusters=5,
+                metric=metric,
+                bisecting_strategy=strategy,
+                max_iter=5,
+                random_state=0,
+                **params
+            ).fit(X)
+            assert model.labels_.shape == (n,)
+            assert sorted(np.unique(model.labels_)) == list(range(5))
+            assert model.cluster_centers_.shape == (5, sz, d)
+            assert model.splits_.shape == (4, 3)
+            assert model.leaf_nodes_.shape == (5,)
+            # Each split replaces one leaf by two new nodes
+            assert set(model.leaf_nodes_) == (
+                set(model.splits_[:, 1:].ravel()) - set(model.splits_[:, 0])
+            )
+            # Top-down prediction of the training data gives the fit labels
+            np.testing.assert_array_equal(model.predict(X), model.labels_)
+            np.testing.assert_array_equal(
+                TimeSeriesBisectingKMeans(
+                    n_clusters=5, metric=metric, bisecting_strategy=strategy,
+                    max_iter=5, random_state=0, **params
+                ).fit_predict(X),
+                model.labels_,
+            )
+            assert model.inertia_ > 0
+            assert model.n_iter_ >= 4
+
+
+def test_bisecting_kmeans_strategies():
+    # One tight group of 10 series, one group of 6 series spread widely
+    # and one group of 4 series, all far from each other.
+    rng = np.random.RandomState(0)
+    a = rng.randn(10, 8, 1) * 0.01
+    b = 50 + rng.randn(6, 8, 1) * 5.0
+    c = -50 + rng.randn(4, 8, 1) * 0.01
+    X = np.vstack([a, b, c])
+    # Both first splits separate the groups; the 3rd cluster is then
+    # obtained by splitting the widest cluster or the largest one
+    big_inertia = TimeSeriesBisectingKMeans(
+        n_clusters=3, bisecting_strategy="biggest_inertia", random_state=0
+    ).fit(X)
+    largest = TimeSeriesBisectingKMeans(
+        n_clusters=4, bisecting_strategy="largest_cluster", random_state=0
+    ).fit(X)
+    sizes_inertia = sorted(np.bincount(big_inertia.labels_))
+    assert sum(sizes_inertia) == 20
+    # the widest group (b, 6 series) was cut or stays whole depending on
+    # the strategy, but the 10 tight series are never split by inertia
+    assert 10 in sizes_inertia
+    assert len(np.unique(largest.labels_)) == 4
+
+
+def test_bisecting_kmeans_variable_length():
+    X = to_time_series_dataset([[1, 2, 3, 4], [1, 2, 3], [2, 5, 6, 7, 8, 9],
+                                [0, 0, 1], [9, 9, 8, 8, 7], [1, 1, 2, 2]])
+    model = TimeSeriesBisectingKMeans(
+        n_clusters=3, metric="dtw", max_iter=3, max_iter_barycenter=3,
+        random_state=0
+    ).fit(X)
+    assert model.cluster_centers_.shape[0] == 3
+    assert len(np.unique(model.predict(X))) <= 3
+    np.testing.assert_array_equal(model.predict(X), model.labels_)
+
+
+def test_bisecting_kmeans_single_cluster_and_errors():
+    X = random_walks(n_ts=10, sz=8, d=1, random_state=0)
+    model = TimeSeriesBisectingKMeans(n_clusters=1, random_state=0).fit(X)
+    assert np.all(model.labels_ == 0)
+    assert model.splits_.shape == (0, 3)
+    np.testing.assert_allclose(model.cluster_centers_[0], X.mean(axis=0))
+    np.testing.assert_array_equal(model.predict(X), np.zeros(10, dtype=int))
+
+    with pytest.raises(ValueError):
+        TimeSeriesBisectingKMeans(n_clusters=11).fit(X)
+    with pytest.raises(ValueError):
+        TimeSeriesBisectingKMeans(n_clusters=0).fit(X)
+    with pytest.raises(ValueError):
+        TimeSeriesBisectingKMeans(bisecting_strategy="foo").fit(X)
+    with pytest.raises(NotFittedError):
+        TimeSeriesBisectingKMeans().predict(X)
+
+
+def test_bisecting_kmeans_identical_series():
+    # Identical series cannot be split: fewer clusters, with a warning
+    X = np.ones((6, 5, 1))
+    with pytest.warns(ConvergenceWarning):
+        model = TimeSeriesBisectingKMeans(n_clusters=3, random_state=0).fit(X)
+    assert model.cluster_centers_.shape[0] < 3
