@@ -67,6 +67,34 @@ The ``metric`` parameter can also be set to ``"softdtw"`` as an alternative
 time series metric (`cf.`
 :ref:`our User Guide section on soft-DTW <dtw-softdtw>`).
 
+.. _bisecting-kmeans:
+
+Bisecting :math:`k`-means
+-------------------------
+
+:class:`~tslearn.clustering.TimeSeriesBisectingKMeans` is a top-down
+alternative to hierarchical clustering. It starts from one cluster that
+contains the whole dataset and repeatedly splits one cluster in two with
+:math:`k`-means (``n_clusters=2``), until ``n_clusters`` clusters are
+obtained. Unlike agglomerative clustering, it does not need the pairwise
+distance matrix of the whole dataset, and it supports the same metrics as
+:class:`~tslearn.clustering.TimeSeriesKMeans` (including DTW and soft-DTW):
+
+.. code-block:: python
+
+    from tslearn.clustering import TimeSeriesBisectingKMeans
+
+    model = TimeSeriesBisectingKMeans(n_clusters=4, metric="dtw",
+                                      bisecting_strategy="biggest_inertia",
+                                      random_state=seed)
+    model.fit(X_train)
+
+The ``bisecting_strategy`` parameter selects the cluster that is split at each
+step: the one with the biggest inertia (default) or the largest one. After
+fitting, ``splits_`` gives the split hierarchy and ``predict`` follows it
+from the root down to a cluster.
+
+
 .. _kernel-kmeans:
 
 
@@ -99,7 +127,7 @@ This is because Global Alignment Kernel is not invariant to time shifts, as
 demonstrated in [3]_ for the closely related soft-DTW [4]_.
 
 
-.. minigallery:: tslearn.clustering.TimeSeriesKMeans tslearn.clustering.KernelKMeans
+.. minigallery:: tslearn.clustering.TimeSeriesKMeans tslearn.clustering.TimeSeriesBisectingKMeans tslearn.clustering.KernelKMeans
     :add-heading: Examples Using Clustering Estimators
     :heading-level: -
 
