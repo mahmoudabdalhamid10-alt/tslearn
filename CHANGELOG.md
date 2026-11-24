@@ -11,6 +11,11 @@ Changelogs for this project are recorded in this file since v0.2.0.
 
 ## [Towards v0.11.0]
 
+### Added
+
+* `TimeSeriesBisectingKMeans`: bisecting (divisive) k-means clustering for time series,
+  with Euclidean, DTW and soft-DTW metrics ([#420](https://github.com/tslearn-team/tslearn/issues/420))
+
 ### Fixed
 
 * Inertia of `TimeSeriesKMeans` now properly reflects the final centroid updates ([#832](https://github.com/tslearn-team/tslearn/issues/832))
