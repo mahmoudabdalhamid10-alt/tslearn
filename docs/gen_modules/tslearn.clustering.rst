@@ -14,6 +14,7 @@ tslearn.clustering
       KernelKMeans
       KShape
       TimeSeriesKMeans
+      TimeSeriesBisectingKMeans
       TimeSeriesDBSCAN
 
    .. rubric:: Functions
